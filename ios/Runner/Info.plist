@@ -45,6 +45,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bluetooth cihazlarına bağlanmak için gereklidir.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Uygulama fotoğraf çekmek için kameranıza erişim gereklidir.</string>
 </dict>
