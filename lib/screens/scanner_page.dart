@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../utils/app_colors.dart';
 import '../utils/helpers.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// QR kod tarama ekranı
 class ScannerPage extends StatefulWidget {
