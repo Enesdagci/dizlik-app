@@ -15,15 +15,36 @@ class ScannerPage extends StatefulWidget {
 class _ScannerPageState extends State<ScannerPage> {
   bool isScanCompleted = false;
   bool isTorchOn = false;
+  bool hasPermission = false;
 
   final MobileScannerController controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
   );
 
   @override
+  void initState() {
+    super.initState();
+    _requestPermission();
+  }
+
+  @override
   void dispose() {
     controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _requestPermission() async {
+    var status = await Permission.camera.request();
+  
+    if (status.isGranted) {
+      setState(() {
+        hasPermission = true;
+      });
+    } else {
+      setState(() {
+        hasPermission = false;
+      });
+    }
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -72,10 +93,17 @@ class _ScannerPageState extends State<ScannerPage> {
       ),
       body: Stack(
         children: [
-          MobileScanner(
-            controller: controller,
-            onDetect: _onDetect,
-          ),
+          hasPermission
+              ? MobileScanner(
+                  controller: controller,
+                  onDetect: _onDetect,
+                )
+              : const Center(
+                  child: Text(
+                    "Kamera izni gerekiyor",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),     
           Center(
             child: Container(
               width: 280,
