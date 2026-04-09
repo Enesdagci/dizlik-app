@@ -1,0 +1,139 @@
+workflows:
+  ios-workflow:
+    name: iOS Production Release
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    
+    integrations:
+      app_store_connect: codemagic
+    
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.dag.dizlikTakipSistemi
+        
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      
+      vars:
+        BUNDLE_ID: "com.dag.dizlikTakipSistemi"
+        APP_NAME: "Dizlik Takip Sistemi"
+        APP_STORE_CONNECT_ISSUER_ID: 3bbca92a-59c9-437d-8f6c-89ea9630b3a5
+        APP_STORE_CONNECT_KEY_IDENTIFIER: 97GTB7KYUD
+        
+    cache:
+      cache_paths: []
+      
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+          source: true
+          
+    scripts:
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+          
+      - name: Verify and fix Info.plist permissions
+        script: |
+          INFO_PLIST="ios/Runner/Info.plist"
+          
+          echo "📋 Checking Info.plist for required permissions..."
+          
+          # Kamera izni
+          if ! grep -q "NSCameraUsageDescription" "$INFO_PLIST"; then
+            echo "⚠️  Adding Camera permission..."
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Bu uygulama fotoğraf çekmek için kameranıza erişmek istiyor'" "$INFO_PLIST"
+          else
+            echo "✅ Camera permission exists"
+          fi
+          
+          echo ""
+          echo "📄 Final permissions in Info.plist:"
+          grep -A 1 "UsageDescription" "$INFO_PLIST" || echo "No usage descriptions found"
+          
+      - name: Clean build environment
+        script: |
+          echo "🧹 Starting clean build process..."
+          flutter clean
+          
+          cd ios
+          rm -rf Pods Podfile.lock .symlinks
+          pod deintegrate || true
+          pod install --repo-update
+          cd ..
+          
+          echo "✅ Clean completed"
+          
+      - name: Get Flutter dependencies
+        script: |
+          flutter pub get
+          
+      - name: Flutter analyze
+        script: |
+          flutter analyze || true
+          
+      - name: Increment build number
+        script: |
+          #!/bin/sh
+          set -e
+          set -x
+          
+          cd ios
+          
+          # Get latest build number from TestFlight
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_CONNECT_ISSUER_ID" "$APP_STORE_CONNECT_KEY_IDENTIFIER" "$BUNDLE_ID")
+          
+          if [ -z "$LATEST_BUILD_NUMBER" ]; then
+            # Eğer TestFlight'ta build yoksa
+            NEW_BUILD_NUMBER=1
+          else
+            NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
+          fi
+          
+          echo "Latest TestFlight build number: $LATEST_BUILD_NUMBER"
+          echo "New build number: $NEW_BUILD_NUMBER"
+          
+          cd ..
+          
+          # Build number'ı export et
+          BUILD_NUMBER=$NEW_BUILD_NUMBER
+          export BUILD_NUMBER
+          
+      - name: Build iOS IPA
+        script: |
+          echo "🏗️  Building iOS app..."
+          
+          flutter build ipa --release \
+            --build-number=${BUILD_NUMBER:-1} \
+            --export-options-plist=$HOME/export_options.plist
+            
+      - name: Verify IPA
+        script: |
+          if [ -f build/ios/ipa/*.ipa ]; then
+            echo "✅ IPA file created successfully"
+            ls -lh build/ios/ipa/*.ipa
+          else
+            echo "❌ IPA file not found!"
+            exit 1
+          fi
+            
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+          
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
