@@ -48,6 +48,10 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Bluetooth cihazlarına bağlanmak için gereklidir.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Uygulama fotoğraf çekmek için kameranıza erişim gereklidir.</string>
+	<string>Uygulama fotoğraf çekmek için kameranıza erişim gereklidir.</string>	
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Bu uygulama galeriden fotoğraf seçmek için erişim istiyor</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Bu uygulama fotoğrafları galerinize kaydetmek istiyor</string>
 </dict>
 </plist>
