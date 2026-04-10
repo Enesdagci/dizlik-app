@@ -47,9 +47,25 @@ workflows:
           # Kamera izni
           if ! grep -q "NSCameraUsageDescription" "$INFO_PLIST"; then
             echo "⚠️  Adding Camera permission..."
-            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Bu uygulama fotoğraf çekmek için kameranıza erişmek istiyor'" "$INFO_PLIST"
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Bu uygulama cihazın QR kodunu okumak için kameranıza erişmek istiyor'" "$INFO_PLIST"
           else
             echo "✅ Camera permission exists"
+          fi
+          
+          # Photo Library izni
+          if ! grep -q "NSPhotoLibraryUsageDescription" "$INFO_PLIST"; then
+            echo "⚠️  Adding Photo Library permission..."
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Bu uygulama galeriden fotoğraf seçmek için erişim istiyor'" "$INFO_PLIST"
+          else
+            echo "✅ Photo Library permission exists"
+          fi
+          
+          # Photo Library Add izni
+          if ! grep -q "NSPhotoLibraryAddUsageDescription" "$INFO_PLIST"; then
+            echo "⚠️  Adding Photo Library Add permission..."
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Bu uygulama fotoğrafları galerinize kaydetmek istiyor'" "$INFO_PLIST"
+          else
+            echo "✅ Photo Library Add permission exists"
           fi
           
           echo ""
