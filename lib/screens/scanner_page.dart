@@ -12,39 +12,101 @@ class ScannerPage extends StatefulWidget {
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends State<ScannerPage> {
+class _ScannerPageState extends State<ScannerPage> with WidgetsBindingObserver {
   bool isScanCompleted = false;
   bool isTorchOn = false;
-  bool hasPermission = false;
-
-  final MobileScannerController controller = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
-  );
+  MobileScannerController? controller;
 
   @override
   void initState() {
     super.initState();
-    _requestPermission();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeScanner();
   }
 
   @override
   void dispose() {
-    controller.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    controller?.dispose();
     super.dispose();
   }
 
-  Future<void> _requestPermission() async {
-    var status = await Permission.camera.request();
-  
-    if (status.isGranted) {
-      setState(() {
-        hasPermission = true;
-      });
-    } else {
-      setState(() {
-        hasPermission = false;
-      });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (controller == null) return;
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // Uygulama ön plana geldiğinde kamerayı başlat
+        controller?.start();
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+        // Uygulama arka plana gittiğinde kamerayı durdur
+        controller?.stop();
+        break;
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        break;
     }
+  }
+
+  Future<void> _initializeScanner() async {
+    // İzin kontrolü
+    final status = await Permission.camera.status;
+    
+    if (status.isDenied) {
+      final result = await Permission.camera.request();
+      if (!result.isGranted) {
+        if (mounted) {
+          _showPermissionDialog();
+        }
+        return;
+      }
+    } else if (status.isPermanentlyDenied) {
+      if (mounted) {
+        _showPermissionDialog();
+      }
+      return;
+    }
+
+    // İzin varsa controller'ı oluştur
+    setState(() {
+      controller = MobileScannerController(
+        detectionSpeed: DetectionSpeed.noDuplicates,
+      );
+    });
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Kamera İzni Gerekli'),
+        content: const Text(
+          'QR kod okuyabilmek için kamera iznine ihtiyacımız var. '
+          'Lütfen ayarlardan "Kamera" iznini açın.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('İptal'),
+          ),
+          TextButton(
+            onPressed: () {
+              openAppSettings();
+              Navigator.pop(context);
+            },
+            child: const Text('Ayarlara Git'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -61,7 +123,7 @@ class _ScannerPageState extends State<ScannerPage> {
 
         Helpers.showSuccessSnackBar(context, 'QR kod okundu!');
         Future.delayed(const Duration(milliseconds: 500), () {
-          if (!mounted) return; // widget hala tree'de mi kontrol et
+          if (!mounted) return;
           Navigator.pop(context, macAddress);
         });
       }
@@ -69,7 +131,7 @@ class _ScannerPageState extends State<ScannerPage> {
   }
 
   void _toggleTorch() {
-    controller.toggleTorch();
+    controller?.toggleTorch();
     setState(() {
       isTorchOn = !isTorchOn;
     });
@@ -84,26 +146,67 @@ class _ScannerPageState extends State<ScannerPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: Icon(isTorchOn ? Icons.flash_on : Icons.flash_off),
-            onPressed: _toggleTorch,
-            tooltip: isTorchOn ? 'Flaşı Kapat' : 'Flaşı Aç',
-          ),
+          if (controller != null)
+            IconButton(
+              icon: Icon(isTorchOn ? Icons.flash_on : Icons.flash_off),
+              onPressed: _toggleTorch,
+              tooltip: isTorchOn ? 'Flaşı Kapat' : 'Flaşı Aç',
+            ),
         ],
       ),
       body: Stack(
         children: [
-          hasPermission
-              ? MobileScanner(
-                  controller: controller,
-                  onDetect: _onDetect,
-                )
-              : const Center(
-                  child: Text(
-                    "Kamera izni gerekiyor",
-                    style: TextStyle(color: Colors.white),
+          if (controller != null)
+            MobileScanner(
+              controller: controller!,
+              onDetect: _onDetect,
+              errorBuilder: (context, error, child) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error,
+                        color: Colors.red,
+                        size: 64,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Kamera hatası',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Text(
+                          error.errorDetails?.message ?? 'Bilinmeyen hata',
+                          style: const TextStyle(color: Colors.white70),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => openAppSettings(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                        ),
+                        child: const Text('Ayarlara Git'),
+                      ),
+                    ],
                   ),
-                ),     
+                );
+              },
+            )
+          else
+            const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+              ),
+            ),
           Center(
             child: Container(
               width: 280,
@@ -125,7 +228,7 @@ class _ScannerPageState extends State<ScannerPage> {
               ),
             ),
           ),
-          if (!isScanCompleted)
+          if (!isScanCompleted && controller != null)
             const Center(
               child: SizedBox(
                 width: 280,
