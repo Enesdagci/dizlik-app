@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../utils/app_colors.dart';
 import '../utils/helpers.dart';
-import 'package:permission_handler/permission_handler.dart';
 
-/// QR kod tarama ekranı
+/// QR kod tarama ekranı - 3 yöntem: Kamera, Galeri, Manuel
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key});
 
@@ -12,72 +13,115 @@ class ScannerPage extends StatefulWidget {
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends State<ScannerPage> with WidgetsBindingObserver {
-  bool isScanCompleted = false;
-  bool isTorchOn = false;
-  MobileScannerController? controller;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initializeScanner();
-  }
+class _ScannerPageState extends State<ScannerPage> {
+  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _manualController = TextEditingController();
+  
+  bool _showManualInput = false;
+  bool _showCameraScanner = false;
+  MobileScannerController? _cameraController;
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    controller?.dispose();
+    _cameraController?.dispose();
+    _manualController.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    
-    if (controller == null) return;
+  // Galeriden QR kod okuma
+  Future<void> _pickFromGallery() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+      );
 
-    switch (state) {
-      case AppLifecycleState.resumed:
-        // Uygulama ön plana geldiğinde kamerayı başlat
-        controller?.start();
-        break;
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.paused:
-        // Uygulama arka plana gittiğinde kamerayı durdur
-        controller?.stop();
-        break;
-      case AppLifecycleState.detached:
-      case AppLifecycleState.hidden:
-        break;
+      if (image == null) return;
+
+      // Galeriden seçilen fotoğrafı mobile_scanner ile analiz et
+      final controller = MobileScannerController();
+      
+      // Fotoğrafı analiz et
+      final BarcodeCapture? capture = await controller.analyzeImage(image.path);
+      
+      await controller.dispose();
+
+      if (capture != null && capture.barcodes.isNotEmpty) {
+        final String? macAddress = capture.barcodes.first.rawValue;
+        
+        if (macAddress != null && macAddress.isNotEmpty) {
+          if (mounted) {
+            Helpers.showSuccessSnackBar(context, 'QR kod galeriden okundu!');
+            Navigator.pop(context, macAddress);
+          }
+        } else {
+          if (mounted) {
+            _showErrorDialog('QR kod bulunamadı', 
+              'Seçtiğiniz fotoğrafta geçerli bir QR kod bulunamadı.');
+          }
+        }
+      } else {
+        if (mounted) {
+          _showErrorDialog('QR kod okunamadı', 
+            'Lütfen QR kodun net görüldüğü bir fotoğraf seçin.');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog('Hata', 'Fotoğraf analiz edilirken hata oluştu: $e');
+      }
     }
   }
 
-  Future<void> _initializeScanner() async {
-    // İzin kontrolü
+  // Kamera ile QR kod okuma
+  Future<void> _openCameraScanner() async {
+    // Önce izin kontrol et
     final status = await Permission.camera.status;
     
     if (status.isDenied) {
       final result = await Permission.camera.request();
       if (!result.isGranted) {
-        if (mounted) {
-          _showPermissionDialog();
-        }
+        _showPermissionDialog();
         return;
       }
     } else if (status.isPermanentlyDenied) {
-      if (mounted) {
-        _showPermissionDialog();
-      }
+      _showPermissionDialog();
       return;
     }
 
-    // İzin varsa controller'ı oluştur
+    // İzin varsa kamera scanner'ı aç
     setState(() {
-      controller = MobileScannerController(
+      _showCameraScanner = true;
+      _cameraController = MobileScannerController(
         detectionSpeed: DetectionSpeed.noDuplicates,
       );
     });
+  }
+
+  // Manuel MAC adresi girişi
+  void _showManualInput() {
+    setState(() {
+      _showManualInput = true;
+    });
+  }
+
+  void _submitManualInput() {
+    final macAddress = _manualController.text.trim();
+    
+    if (macAddress.isEmpty) {
+      Helpers.showErrorSnackBar(context, 'Lütfen MAC adresi girin');
+      return;
+    }
+
+    // MAC adresi formatı kontrolü (opsiyonel)
+    final macRegex = RegExp(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$');
+    if (!macRegex.hasMatch(macAddress)) {
+      _showErrorDialog('Geçersiz Format', 
+        'MAC adresi formatı: AA:BB:CC:DD:EE:FF\nÖrnek: 12:34:56:78:9A:BC');
+      return;
+    }
+
+    Helpers.showSuccessSnackBar(context, 'MAC adresi kaydedildi!');
+    Navigator.pop(context, macAddress);
   }
 
   void _showPermissionDialog() {
@@ -86,15 +130,14 @@ class _ScannerPageState extends State<ScannerPage> with WidgetsBindingObserver {
       builder: (context) => AlertDialog(
         title: const Text('Kamera İzni Gerekli'),
         content: const Text(
-          'QR kod okuyabilmek için kamera iznine ihtiyacımız var. '
-          'Lütfen ayarlardan "Kamera" iznini açın.',
+          'Kamera ile QR kod okumak için izin gerekiyor.\n\n'
+          'Alternatif olarak:\n'
+          '• Galeriden QR fotoğrafı seçebilirsiniz\n'
+          '• Manuel olarak MAC adresini girebilirsiniz',
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context),
             child: const Text('İptal'),
           ),
           TextButton(
@@ -109,270 +152,272 @@ class _ScannerPageState extends State<ScannerPage> with WidgetsBindingObserver {
     );
   }
 
-  void _onDetect(BarcodeCapture capture) {
-    if (isScanCompleted) return;
-
-    final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isNotEmpty) {
-      final String? macAddress = barcodes.first.rawValue;
-
-      if (macAddress != null && macAddress.isNotEmpty) {
-        setState(() {
-          isScanCompleted = true;
-        });
-
-        Helpers.showSuccessSnackBar(context, 'QR kod okundu!');
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (!mounted) return;
-          Navigator.pop(context, macAddress);
-        });
-      }
-    }
-  }
-
-  void _toggleTorch() {
-    controller?.toggleTorch();
-    setState(() {
-      isTorchOn = !isTorchOn;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text('Cihaz QR Kodu Tara'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
         actions: [
-          if (controller != null)
-            IconButton(
-              icon: Icon(isTorchOn ? Icons.flash_on : Icons.flash_off),
-              onPressed: _toggleTorch,
-              tooltip: isTorchOn ? 'Flaşı Kapat' : 'Flaşı Aç',
-            ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          if (controller != null)
-            MobileScanner(
-              controller: controller!,
-              onDetect: _onDetect,
-              errorBuilder: (context, error, child) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error,
-                        color: Colors.red,
-                        size: 64,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Kamera hatası',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Text(
-                          error.errorDetails?.message ?? 'Bilinmeyen hata',
-                          style: const TextStyle(color: Colors.white70),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () => openAppSettings(),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                        ),
-                        child: const Text('Ayarlara Git'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            )
-          else
-            const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
-            ),
-          Center(
-            child: Container(
-              width: 280,
-              height: 280,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: AppColors.primary,
-                  width: 3,
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Stack(
-                children: [
-                  _CornerWidget(alignment: Alignment.topLeft),
-                  _CornerWidget(alignment: Alignment.topRight),
-                  _CornerWidget(alignment: Alignment.bottomLeft),
-                  _CornerWidget(alignment: Alignment.bottomRight),
-                ],
-              ),
-            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tamam'),
           ),
-          if (!isScanCompleted && controller != null)
-            const Center(
-              child: SizedBox(
-                width: 280,
-                height: 280,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.all(Radius.circular(16)),
-                  child: _ScannerAnimation(),
-                ),
-              ),
-            ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.qr_code_scanner,
-                    color: AppColors.primary,
-                    size: 40,
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    'Cihazın üzerindeki QR kodu\nkameranın önüne tutun',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      height: 1.4,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (isScanCompleted)
-            Container(
-              color: AppColors.success.withValues(alpha: 0.3),
-              child: const Center(
-                child: Icon(
-                  Icons.check_circle,
-                  color: Colors.white,
-                  size: 80,
-                ),
-              ),
-            ),
         ],
       ),
     );
   }
-}
 
-class _CornerWidget extends StatelessWidget {
-  final Alignment alignment;
+  void _onCameraDetect(BarcodeCapture capture) {
+    if (capture.barcodes.isEmpty) return;
 
-  const _CornerWidget({required this.alignment});
+    final String? macAddress = capture.barcodes.first.rawValue;
+
+    if (macAddress != null && macAddress.isNotEmpty) {
+      Helpers.showSuccessSnackBar(context, 'QR kod okundu!');
+      Navigator.pop(context, macAddress);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          border: Border(
-            top: alignment.y < 0
-                ? const BorderSide(color: AppColors.accent, width: 4)
-                : BorderSide.none,
-            bottom: alignment.y > 0
-                ? const BorderSide(color: AppColors.accent, width: 4)
-                : BorderSide.none,
-            left: alignment.x < 0
-                ? const BorderSide(color: AppColors.accent, width: 4)
-                : BorderSide.none,
-            right: alignment.x > 0
-                ? const BorderSide(color: AppColors.accent, width: 4)
-                : BorderSide.none,
+    // Manuel giriş ekranı
+    if (_showManualInput) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('MAC Adresi Gir'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() => _showManualInput = false),
           ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(
+                Icons.edit,
+                size: 80,
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                'Dizlik üzerindeki MAC adresini girin',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _manualController,
+                decoration: InputDecoration(
+                  labelText: 'MAC Adresi',
+                  hintText: 'AA:BB:CC:DD:EE:FF',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.bluetooth),
+                ),
+                keyboardType: TextInputType.text,
+                textCapitalization: TextCapitalization.characters,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Format: AA:BB:CC:DD:EE:FF veya AA-BB-CC-DD-EE-FF',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: _submitManualInput,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Kaydet',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Kamera scanner ekranı
+    if (_showCameraScanner && _cameraController != null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          title: const Text('QR Kod Tara'),
+          backgroundColor: Colors.transparent,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              _cameraController?.dispose();
+              setState(() {
+                _showCameraScanner = false;
+                _cameraController = null;
+              });
+            },
+          ),
+        ),
+        body: MobileScanner(
+          controller: _cameraController!,
+          onDetect: _onCameraDetect,
+        ),
+      );
+    }
+
+    // Ana seçim ekranı
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Cihaz Bağlantısı'),
+        backgroundColor: AppColors.primary,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 20),
+            const Icon(
+              Icons.qr_code_scanner,
+              size: 100,
+              color: AppColors.primary,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'QR Kodu Nasıl Okumak İstersiniz?',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 40),
+            
+            // Kamera ile tara
+            _buildOptionCard(
+              icon: Icons.camera_alt,
+              title: 'Kamera ile Tara',
+              subtitle: 'Kamerayı QR kodun üzerine tutun',
+              onTap: _openCameraScanner,
+              color: Colors.blue,
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Galeriden seç
+            _buildOptionCard(
+              icon: Icons.photo_library,
+              title: 'Galeriden Seç',
+              subtitle: 'QR kod fotoğrafını galeriden seçin',
+              onTap: _pickFromGallery,
+              color: Colors.green,
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Manuel giriş
+            _buildOptionCard(
+              icon: Icons.keyboard,
+              title: 'Manuel Gir',
+              subtitle: 'MAC adresini elle girin',
+              onTap: _showManualInput,
+              color: Colors.orange,
+            ),
+            
+            const Spacer(),
+            
+            Text(
+              'Dizlik üzerindeki QR kodu okuyarak\ncihaza bağlanabilirsiniz',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
   }
-}
 
-class _ScannerAnimation extends StatefulWidget {
-  const _ScannerAnimation();
-
-  @override
-  State<_ScannerAnimation> createState() => _ScannerAnimationState();
-}
-
-class _ScannerAnimationState extends State<_ScannerAnimation>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Align(
-          alignment: Alignment(0, -1 + (_controller.value * 2)),
-          child: Container(
-            height: 2,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  Colors.transparent,
-                  AppColors.primary,
-                  Colors.transparent,
+  Widget _buildOptionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: color.withOpacity(0.3),
+            width: 2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[700],
+                    ),
+                  ),
                 ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.5),
-                  blurRadius: 10,
-                ),
-              ],
             ),
-          ),
-        );
-      },
+            Icon(
+              Icons.arrow_forward_ios,
+              color: color,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
