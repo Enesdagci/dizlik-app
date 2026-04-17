@@ -98,7 +98,7 @@ class _ScannerPageState extends State<ScannerPage> {
   }
 
   // Manuel MAC adresi girişi
-  void _showManualInput() {
+  void _openManualInput() {
     setState(() {
       _showManualInput = true;
     });
@@ -333,7 +333,7 @@ class _ScannerPageState extends State<ScannerPage> {
               icon: Icons.keyboard,
               title: 'Manuel Gir',
               subtitle: 'MAC adresini elle girin',
-              onTap: _showManualInput,
+              onTap: _openManualInput,
               color: Colors.orange,
             ),
             
