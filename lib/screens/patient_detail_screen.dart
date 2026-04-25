@@ -167,7 +167,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
         _battery = '--';
         _status = AppConstants.connectingMessage;
       });
-      await _ble.connect(widget.patient.deviceMac);
+      await _ble.connect();
     } catch (e) {
       if (mounted) {
         Helpers.showErrorSnackBar(context, '${AppConstants.connectionError}: ${e.toString()}');
