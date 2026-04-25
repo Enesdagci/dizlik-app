@@ -36,16 +36,50 @@ class BleService {
   bool get isConnected => connectedDevice?.isConnected ?? false;
 
   /// Cihaza bağlanır
-  Future<void> connect(String macAddress) async {
+  Future<void> connect(String targetId) async {
     // Önceki bağlantıyı temizle
     await disconnect();
 
-    _statusController.add('Bağlanıyor...');
+    _statusController.add('Cihaz aranıyor...');
 
     try {
-      connectedDevice = BluetoothDevice.fromId(macAddress.trim());
+      debugPrint('🔍 Bluetooth taraması başlatılıyor. Aranan: $targetId');
+      await FlutterBluePlus.stopScan(); // Varsa eski taramayı durdur
+      
+      // 4 saniyelik bir tarama başlat
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 4));
 
-      debugPrint('🔵 Cihaza bağlanılıyor: $macAddress');
+      BluetoothDevice? foundDevice;
+
+      // Tarama sonuçlarını dinle
+      var subscription = FlutterBluePlus.scanResults.listen((results) {
+        for (ScanResult r in results) {
+          
+          // ✅ İŞTE SİHRİN GERÇEKLEŞTİĞİ YER:
+          // Okunan QR Kod verisi (targetId), cihazın ismine VEYA adresine eşit mi?
+          if (r.device.platformName == targetId || 
+              r.device.remoteId.str.toUpperCase() == targetId.toUpperCase()) {
+            
+            foundDevice = r.device;
+            debugPrint('✅ Hedef Cihaz Bulundu!');
+            FlutterBluePlus.stopScan(); // Cihazı bulduk, taramayı durdur
+            break;
+          }
+        }
+      });
+
+      // Taramanın bitmesi için bekle
+      await Future.delayed(const Duration(milliseconds: 4500));
+      await subscription.cancel(); // Dinleyiciyi kapat
+
+      // Eğer cihaz bulunamadıysa işlemi iptal et
+      if (foundDevice == null) {
+        throw Exception("'$targetId' kapsama alanında bulunamadı! Cihazın açık olduğundan emin olun.");
+      }
+
+      connectedDevice = foundDevice;
+      debugPrint('🔵 Cihaza bağlanılıyor... Kimlik: ${connectedDevice!.remoteId}');
+      _statusController.add('Bağlanılıyor...');
 
       await connectedDevice!.connect(
         timeout: const Duration(seconds: AppConstants.connectionTimeout),
@@ -54,7 +88,6 @@ class BleService {
 
       _statusController.add('Servisler keşfediliyor...');
 
-      // Android'de stabilite için kısa bekleme
       await Future.delayed(const Duration(milliseconds: 1000));
 
       await _discoverServices();
