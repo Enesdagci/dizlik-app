@@ -21,6 +21,8 @@ class _ScannerPageState extends State<ScannerPage> {
   bool _showCameraScanner = false;
   MobileScannerController? _cameraController;
 
+  bool _isScanned = false;
+
   @override
   void dispose() {
     _cameraController?.dispose();
@@ -91,6 +93,7 @@ class _ScannerPageState extends State<ScannerPage> {
     // İzin varsa kamera scanner'ı aç
     setState(() {
       _showCameraScanner = true;
+      _isScanned = false; // kamerayı sıfırlamak için
       _cameraController = MobileScannerController(
         detectionSpeed: DetectionSpeed.noDuplicates,
       );
@@ -164,15 +167,24 @@ class _ScannerPageState extends State<ScannerPage> {
   }
 
   void _onCameraDetect(BarcodeCapture capture) {
-    if (capture.barcodes.isEmpty) return;
-
-    final String? macAddress = capture.barcodes.first.rawValue;
-
-    if (macAddress != null && macAddress.isNotEmpty) {
-      Helpers.showSuccessSnackBar(context, 'QR kod okundu!');
-      Navigator.pop(context, macAddress);
+      // Eğer daha önce okuduysak veya liste boşsa hiçbir şey yapma
+      if (_isScanned || capture.barcodes.isEmpty) return;
+  
+      final String? deviceId = capture.barcodes.first.rawValue;
+  
+      if (deviceId != null && deviceId.isNotEmpty) {
+        // Okuduğumuz an kilidi kapat ki saniyede 30 defa geri dönmeye çalışmasın
+        _isScanned = true; 
+        
+        // Kamerayı güvenli bir şekilde durdur
+        _cameraController?.stop();
+  
+        Helpers.showSuccessSnackBar(context, 'Cihaz QR kodu okundu: $deviceId');
+        
+        // Önceki ekrana güvenli geçiş
+        Navigator.pop(context, deviceId);
+      }
     }
-  }
 
   @override
   Widget build(BuildContext context) {
