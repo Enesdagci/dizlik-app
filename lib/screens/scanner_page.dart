@@ -105,23 +105,18 @@ class _ScannerPageState extends State<ScannerPage> {
   }
 
   void _submitManualInput() {
-    final macAddress = _manualController.text.trim();
+    final deviceId = _manualController.text.trim();
     
-    if (macAddress.isEmpty) {
-      Helpers.showErrorSnackBar(context, 'Lütfen MAC adresi girin');
+    if (deviceId.isEmpty) {
+      Helpers.showErrorSnackBar(context, 'Lütfen cihaz adını (Örn: DizlikSensör10) girin');
       return;
     }
 
-    // MAC adresi formatı kontrolü (opsiyonel)
-    final macRegex = RegExp(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$');
-    if (!macRegex.hasMatch(macAddress)) {
-      _showErrorDialog('Geçersiz Format', 
-        'MAC adresi formatı: AA:BB:CC:DD:EE:FF\nÖrnek: 12:34:56:78:9A:BC');
-      return;
-    }
+    // ARTIK REGEX VEYA FORMAT KONTROLÜ YOK!
+    // Ne girilirse girilsin, bunu cihazın kimliği (ismi) olarak kabul ediyoruz.
 
-    Helpers.showSuccessSnackBar(context, 'MAC adresi kaydedildi!');
-    Navigator.pop(context, macAddress);
+    Helpers.showSuccessSnackBar(context, 'Cihaz kimliği kaydedildi!');
+    Navigator.pop(context, deviceId);
   }
 
   void _showPermissionDialog() {
@@ -185,7 +180,7 @@ class _ScannerPageState extends State<ScannerPage> {
     if (_showManualInput) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('MAC Adresi Gir'),
+          title: const Text('Cihaz Adını Gir'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => setState(() => _showManualInput = false),
@@ -203,7 +198,7 @@ class _ScannerPageState extends State<ScannerPage> {
               ),
               const SizedBox(height: 32),
               const Text(
-                'Dizlik üzerindeki MAC adresini girin',
+                'Dizlik üzerindeki cihaz ismini girin',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
@@ -214,8 +209,8 @@ class _ScannerPageState extends State<ScannerPage> {
               TextField(
                 controller: _manualController,
                 decoration: InputDecoration(
-                  labelText: 'MAC Adresi',
-                  hintText: 'AA:BB:CC:DD:EE:FF',
+                  labelText: 'Cihaz adı',
+                  hintText: 'Örnek: DizlikSensör1',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -226,7 +221,7 @@ class _ScannerPageState extends State<ScannerPage> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Format: AA:BB:CC:DD:EE:FF veya AA-BB-CC-DD-EE-FF',
+                'Cihazın yayın yaptığı ismi boşluk bırakmadan yazın.',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey[600],
