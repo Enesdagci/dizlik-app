@@ -217,7 +217,6 @@ class _ScannerPageState extends State<ScannerPage> {
                   prefixIcon: const Icon(Icons.bluetooth),
                 ),
                 keyboardType: TextInputType.text,
-                textCapitalization: TextCapitalization.characters,
               ),
               const SizedBox(height: 12),
               Text(
