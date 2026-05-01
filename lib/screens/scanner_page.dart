@@ -96,6 +96,7 @@ class _ScannerPageState extends State<ScannerPage> {
       _isScanned = false; // kamerayı sıfırlamak için
       _cameraController = MobileScannerController(
         detectionSpeed: DetectionSpeed.noDuplicates,
+        formats: const [BarcodeFormat.all],
       );
     });
   }
@@ -172,7 +173,7 @@ class _ScannerPageState extends State<ScannerPage> {
   
       final String? deviceId = capture.barcodes.first.rawValue;
   
-      if (deviceId != null && deviceId.isNotEmpty) {
+      if (deviceId != null && deviceId.trim().isNotEmpty) {
         // Okuduğumuz an kilidi kapat ki saniyede 30 defa geri dönmeye çalışmasın
         _isScanned = true; 
         
