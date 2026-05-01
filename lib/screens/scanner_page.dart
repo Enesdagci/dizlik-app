@@ -96,7 +96,7 @@ class _ScannerPageState extends State<ScannerPage> {
       _isScanned = false; // kamerayı sıfırlamak için
       _cameraController = MobileScannerController(
         detectionSpeed: DetectionSpeed.noDuplicates,
-        formats: const [BarcodeFormat.all],
+        formats: const [BarcodeFormat.qrCode],
       );
     });
   }
@@ -132,7 +132,7 @@ class _ScannerPageState extends State<ScannerPage> {
           'Kamera ile QR kod okumak için izin gerekiyor.\n\n'
           'Alternatif olarak:\n'
           '• Galeriden QR fotoğrafı seçebilirsiniz\n'
-          '• Manuel olarak MAC adresini girebilirsiniz',
+          '• Manuel olarak Cihaz adını girebilirsiniz',
         ),
         actions: [
           TextButton(
@@ -171,7 +171,7 @@ class _ScannerPageState extends State<ScannerPage> {
       // Eğer daha önce okuduysak veya liste boşsa hiçbir şey yapma
       if (_isScanned || capture.barcodes.isEmpty) return;
   
-      final String? deviceId = capture.barcodes.first.rawValue;
+      final String? deviceId = capture.barcodes.first.rawValue ?? capture.barcodes.first.displayValue;
   
       if (deviceId != null && deviceId.trim().isNotEmpty) {
         // Okuduğumuz an kilidi kapat ki saniyede 30 defa geri dönmeye çalışmasın
