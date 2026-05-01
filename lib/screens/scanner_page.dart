@@ -48,12 +48,12 @@ class _ScannerPageState extends State<ScannerPage> {
       await controller.dispose();
 
       if (capture != null && capture.barcodes.isNotEmpty) {
-        final String? macAddress = capture.barcodes.first.rawValue;
+        final String? deviceId = capture.barcodes.first.rawValue;
         
-        if (macAddress != null && macAddress.isNotEmpty) {
+        if (deviceId != null && deviceId.trim().isNotEmpty) {
           if (mounted) {
             Helpers.showSuccessSnackBar(context, 'QR kod galeriden okundu!');
-            Navigator.pop(context, macAddress);
+            Navigator.pop(context, deviceId.trim());
           }
         } else {
           if (mounted) {
